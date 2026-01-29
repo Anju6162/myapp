@@ -14,11 +14,11 @@ pipeline {
     }
 
     environment {
-        NEXUS_IP        = "3.110.219.178"
+        NEXUS_IP = "3.110.219.178"
         NEXUS_MAVEN_REPO = "maven-releases"
-        NEXUS_DOCKER_REPO = "docker-hosted"
-        APP_NAME        = "myapp"
-        IMAGE_TAG       = "latest"
+        DOCKER_REPO = "docker-hosted"
+        IMAGE_NAME = "myapp"
+        IMAGE_TAG = "latest"
     }
 
     stages {
@@ -31,7 +31,7 @@ pipeline {
 
         stage('Build') {
             steps {
-                 sh 'mvn -f myapp/pom.xml clean package -DskipTests'
+                sh 'mvn clean package -DskipTests'
             }
         }
 
@@ -70,9 +70,7 @@ pipeline {
 
         stage('Docker Push') {
             steps {
-                sh '''
-                docker push 3.110.219.178:8083/myapp:latest
-                '''
+                sh 'docker push 3.110.219.178:8083/myapp:latest'
             }
         }
 
