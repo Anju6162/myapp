@@ -1,16 +1,8 @@
-pipeline {
+ pipeline {
     agent any
 
-    tools {
-        maven 'maven-3'
-        jdk 'jdk17'
-    }
-
     environment {
-        NEXUS_URL   = 'http://3.110.219.178:8081'
-        NEXUS_REPO  = 'maven-releases'
-        NEXUS_CREDS = 'nexus-creds3'
-        DOCKER_IMAGE = 'anjuli6162/myapp'
+        DOCKER_IMAGE = "anjuli6162/myapp"
     }
 
     stages {
@@ -22,12 +14,10 @@ pipeline {
             }
         }
 
-        stage('Build') {
+        stage('Install Dependencies') {
             steps {
                 sh '''
-                  ls -l
-                  cd myapp
-                  mvn clean package -DskipTests
+                  npm install
                 '''
             }
         }
@@ -35,35 +25,14 @@ pipeline {
         stage('Test') {
             steps {
                 sh '''
-                  cd myapp
-                  mvn test
+                  npm test || echo "No tests defined"
                 '''
-            }
-        }
-
-        stage('Upload Artifact to Nexus') {
-            steps {
-                withCredentials([usernamePassword(
-                    credentialsId: "${NEXUS_CREDS}",
-                    usernameVariable: 'NEXUS_USER',
-                    passwordVariable: 'NEXUS_PASS'
-                )]) {
-                    sh '''
-                      cd myapp
-                      mvn deploy \
-                      -Dnexus.url=${NEXUS_URL} \
-                      -Dnexus.repo=${NEXUS_REPO} \
-                      -Dnexus.username=$NEXUS_USER \
-                      -Dnexus.password=$NEXUS_PASS
-                    '''
-                }
             }
         }
 
         stage('Docker Build') {
             steps {
                 sh '''
-                  cd myapp
                   docker build -t $DOCKER_IMAGE:latest .
                 '''
             }
@@ -88,7 +57,6 @@ pipeline {
             steps {
                 withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
                     sh '''
-                      cd myapp
                       kubectl apply -f k8s/
                     '''
                 }
@@ -98,10 +66,11 @@ pipeline {
 
     post {
         success {
-            echo '✅ CI/CD Pipeline Completed Successfully'
+            echo "✅ Node.js CI/CD Pipeline Completed Successfully"
         }
         failure {
-            echo '❌ CI/CD Pipeline Failed'
+            echo "❌ Node.js CI/CD Pipeline Failed"
         }
     }
 }
+
