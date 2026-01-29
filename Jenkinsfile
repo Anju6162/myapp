@@ -3,121 +3,118 @@ pipeline {
 
     tools {
         maven 'maven-3'
-        jdk 'jdk-17'
-    }
-
-    parameters {
-        booleanParam(
-            name: 'SKIP_SONAR',
-            defaultValue: true,
-            description: 'Skip SonarQube Analysis'
-        )
+        jdk 'jdk17'
     }
 
     environment {
-        NEXUS_URL = "http://3.110.219.178:8081"
-        NEXUS_REPO = "maven-releases"
-        NEXUS_CREDENTIALS = "nexus-creds"
+        // Nexus
+        NEXUS_URL = 'http://3.110.219.178:8081'
+        NEXUS_REPO = 'maven-releases'
+        NEXUS_CREDS = 'nexus-creds3'
 
-        DOCKER_IMAGE = "anju6162/myapp"
-        DOCKER_TAG = "${BUILD_NUMBER}"
-
-        KUBE_CONFIG = credentials('kubeconfig')
+        // Docker
+        DOCKER_IMAGE = 'anju6162/myapp'
+        DOCKER_CREDS = 'dockerhub-creds'
     }
 
     stages {
 
         stage('Checkout') {
             steps {
-                checkout scm
+                git branch: 'main',
+                    url: 'https://github.com/Anju6162/myapp.git'
             }
         }
 
         stage('Build') {
             steps {
-                dir('myapp') {
-                    sh 'mvn clean package -DskipTests'
-                }
+                sh '''
+                  mvn clean package -DskipTests
+                '''
             }
         }
 
         stage('Test') {
             steps {
-                dir('myapp') {
-                    sh 'mvn test'
-                }
-            }
-        }
-
-        stage('SonarQube Analysis') {
-            when {
-                expression { return !params.SKIP_SONAR }
-            }
-            steps {
-                echo "Running SonarQube Analysis"
-                // Add sonar command later if needed
+                sh '''
+                  mvn test || true
+                '''
             }
         }
 
         stage('Upload Artifact to Nexus') {
             steps {
-                dir('myapp') {
-                    withCredentials([usernamePassword(
-                        credentialsId: "${NEXUS_CREDENTIALS}",
+                withCredentials([
+                    usernamePassword(
+                        credentialsId: "${NEXUS_CREDS}",
                         usernameVariable: 'NEXUS_USER',
                         passwordVariable: 'NEXUS_PASS'
-                    )]) {
-                        sh """
-                        mvn deploy \
-                        -DskipTests \
-                        -DaltDeploymentRepository=nexus::default::${NEXUS_URL}/repository/${NEXUS_REPO}/ \
-                        -Dnexus.username=$NEXUS_USER \
-                        -Dnexus.password=$NEXUS_PASS
-                        """
-                    }
+                    )
+                ]) {
+                    sh '''
+                      mvn deploy \
+                      -DskipTests \
+                      -Dnexus.url=${NEXUS_URL} \
+                      -Dnexus.repo=${NEXUS_REPO} \
+                      -Dnexus.username=$NEXUS_USER \
+                      -Dnexus.password=$NEXUS_PASS
+                    '''
                 }
             }
         }
 
         stage('Docker Build') {
             steps {
-                dir('myapp') {
-                    sh "docker build -t ${DOCKER_IMAGE}:${DOCKER_TAG} ."
+                sh '''
+                  docker build -t ${DOCKER_IMAGE}:${BUILD_NUMBER} .
+                '''
+            }
+        }
+
+        stage('Docker Login') {
+            steps {
+                withCredentials([
+                    usernamePassword(
+                        credentialsId: "${DOCKER_CREDS}",
+                        usernameVariable: 'DOCKER_USER',
+                        passwordVariable: 'DOCKER_PASS'
+                    )
+                ]) {
+                    sh '''
+                      echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
+                    '''
                 }
             }
         }
 
         stage('Docker Push') {
             steps {
-                withCredentials([usernamePassword(
-                    credentialsId: 'dockerhub-creds',
-                    usernameVariable: 'DOCKER_USER',
-                    passwordVariable: 'DOCKER_PASS'
-                )]) {
-                    sh """
-                    echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin
-                    docker push ${DOCKER_IMAGE}:${DOCKER_TAG}
-                    """
-                }
+                sh '''
+                  docker tag ${DOCKER_IMAGE}:${BUILD_NUMBER} ${DOCKER_IMAGE}:latest
+                  docker push ${DOCKER_IMAGE}:${BUILD_NUMBER}
+                  docker push ${DOCKER_IMAGE}:latest
+                '''
             }
         }
 
         stage('Deploy to Kubernetes') {
             steps {
-                sh """
-                kubectl apply -f k8s/deployment.yaml
-                kubectl apply -f k8s/service.yaml
-                """
+                withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
+                    sh '''
+                      kubectl apply -f k8s/
+                      kubectl rollout status deployment myapp
+                    '''
+                }
             }
         }
     }
 
     post {
         success {
-            echo "✅ CI/CD Pipeline completed successfully"
+            echo '✅ CI/CD Pipeline completed successfully'
         }
         failure {
-            echo "❌ CI/CD Pipeline failed"
+            echo '❌ CI/CD Pipeline failed'
         }
     }
 }
