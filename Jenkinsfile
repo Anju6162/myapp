@@ -3,9 +3,8 @@ pipeline {
 
     environment {
         NEXUS_REGISTRY = "3.110.219.178:8083"
-        IMAGE_NAME     = "myapp"
-        IMAGE_TAG      = "latest"
-        FULL_IMAGE     = "${NEXUS_REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG}"
+        IMAGE_NAME = "myapp"
+        IMAGE_TAG = "latest"
     }
 
     stages {
@@ -16,33 +15,37 @@ pipeline {
             }
         }
 
-        stage('Build') {
+        stage('Install Dependencies') {
             steps {
-                sh '''
-                  npm install
-                '''
+                sh 'npm install'
+            }
+        }
+
+        stage('Test') {
+            steps {
+                sh 'npm test || echo "No tests defined"'
             }
         }
 
         stage('Docker Build') {
             steps {
-                sh '''
-                  docker build -t $FULL_IMAGE .
-                '''
+                sh """
+                docker build -t ${NEXUS_REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG} .
+                """
             }
         }
 
-        stage('Upload Image to Nexus') {
+        stage('Push Image to Nexus') {
             steps {
                 withCredentials([usernamePassword(
                     credentialsId: 'nexus-creds3',
                     usernameVariable: 'NEXUS_USER',
                     passwordVariable: 'NEXUS_PASS'
                 )]) {
-                    sh '''
-                      echo $NEXUS_PASS | docker login $NEXUS_REGISTRY -u $NEXUS_USER --password-stdin
-                      docker push $FULL_IMAGE
-                    '''
+                    sh """
+                    echo \$NEXUS_PASS | docker login ${NEXUS_REGISTRY} -u \$NEXUS_USER --password-stdin
+                    docker push ${NEXUS_REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG}
+                    """
                 }
             }
         }
@@ -50,9 +53,9 @@ pipeline {
         stage('Deploy to Kubernetes') {
             steps {
                 withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
-                    sh '''
-                      kubectl apply -f k8s/
-                    '''
+                    sh """
+                    kubectl apply -f k8s/
+                    """
                 }
             }
         }
