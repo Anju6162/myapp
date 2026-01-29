@@ -24,13 +24,20 @@ pipeline {
 
         stage('Build') {
             steps {
-                sh 'mvn clean package -DskipTests'
+                sh '''
+                  ls -l
+                  cd myapp
+                  mvn clean package -DskipTests
+                '''
             }
         }
 
         stage('Test') {
             steps {
-                sh 'mvn test'
+                sh '''
+                  cd myapp
+                  mvn test
+                '''
             }
         }
 
@@ -42,6 +49,7 @@ pipeline {
                     passwordVariable: 'NEXUS_PASS'
                 )]) {
                     sh '''
+                      cd myapp
                       mvn deploy \
                       -Dnexus.url=${NEXUS_URL} \
                       -Dnexus.repo=${NEXUS_REPO} \
@@ -54,7 +62,10 @@ pipeline {
 
         stage('Docker Build') {
             steps {
-                sh 'docker build -t $DOCKER_IMAGE:latest .'
+                sh '''
+                  cd myapp
+                  docker build -t $DOCKER_IMAGE:latest .
+                '''
             }
         }
 
@@ -76,7 +87,10 @@ pipeline {
         stage('Deploy to Kubernetes') {
             steps {
                 withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
-                    sh 'kubectl apply -f k8s/'
+                    sh '''
+                      cd myapp
+                      kubectl apply -f k8s/
+                    '''
                 }
             }
         }
