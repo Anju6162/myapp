@@ -7,8 +7,8 @@ pipeline {
     }
 
     environment {
-        NEXUS_URL = 'http://3.110.219.178:8081'
-        NEXUS_REPO = 'maven-releases'
+        NEXUS_URL   = 'http://3.110.219.178:8081'
+        NEXUS_REPO  = 'maven-releases'
         NEXUS_CREDS = 'nexus-creds3'
         DOCKER_IMAGE = 'anjuli6162/myapp'
     }
@@ -24,19 +24,13 @@ pipeline {
 
         stage('Build') {
             steps {
-                sh '''
-                  cd myapp
-                  mvn clean package -DskipTests
-                '''
+                sh 'mvn clean package -DskipTests'
             }
         }
 
         stage('Test') {
             steps {
-                sh '''
-                  cd myapp
-                  mvn test
-                '''
+                sh 'mvn test'
             }
         }
 
@@ -48,7 +42,6 @@ pipeline {
                     passwordVariable: 'NEXUS_PASS'
                 )]) {
                     sh '''
-                      cd myapp
                       mvn deploy \
                       -Dnexus.url=${NEXUS_URL} \
                       -Dnexus.repo=${NEXUS_REPO} \
@@ -61,9 +54,7 @@ pipeline {
 
         stage('Docker Build') {
             steps {
-                sh '''
-                  docker build -t $DOCKER_IMAGE:latest .
-                '''
+                sh 'docker build -t $DOCKER_IMAGE:latest .'
             }
         }
 
@@ -85,9 +76,7 @@ pipeline {
         stage('Deploy to Kubernetes') {
             steps {
                 withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
-                    sh '''
-                      kubectl apply -f k8s/
-                    '''
+                    sh 'kubectl apply -f k8s/'
                 }
             }
         }
