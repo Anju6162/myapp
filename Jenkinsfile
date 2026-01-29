@@ -7,14 +7,10 @@ pipeline {
     }
 
     environment {
-        // Nexus
         NEXUS_URL = 'http://3.110.219.178:8081'
         NEXUS_REPO = 'maven-releases'
         NEXUS_CREDS = 'nexus-creds3'
-
-        // Docker
-        DOCKER_IMAGE = 'anju6162/myapp'
-        DOCKER_CREDS = 'dockerhub-creds'
+        DOCKER_IMAGE = 'anjuli6162/myapp'
     }
 
     stages {
@@ -29,6 +25,7 @@ pipeline {
         stage('Build') {
             steps {
                 sh '''
+                  cd myapp
                   mvn clean package -DskipTests
                 '''
             }
@@ -37,23 +34,22 @@ pipeline {
         stage('Test') {
             steps {
                 sh '''
-                  mvn test || true
+                  cd myapp
+                  mvn test
                 '''
             }
         }
 
         stage('Upload Artifact to Nexus') {
             steps {
-                withCredentials([
-                    usernamePassword(
-                        credentialsId: "${NEXUS_CREDS}",
-                        usernameVariable: 'NEXUS_USER',
-                        passwordVariable: 'NEXUS_PASS'
-                    )
-                ]) {
+                withCredentials([usernamePassword(
+                    credentialsId: "${NEXUS_CREDS}",
+                    usernameVariable: 'NEXUS_USER',
+                    passwordVariable: 'NEXUS_PASS'
+                )]) {
                     sh '''
+                      cd myapp
                       mvn deploy \
-                      -DskipTests \
                       -Dnexus.url=${NEXUS_URL} \
                       -Dnexus.repo=${NEXUS_REPO} \
                       -Dnexus.username=$NEXUS_USER \
@@ -66,34 +62,23 @@ pipeline {
         stage('Docker Build') {
             steps {
                 sh '''
-                  docker build -t ${DOCKER_IMAGE}:${BUILD_NUMBER} .
+                  docker build -t $DOCKER_IMAGE:latest .
                 '''
-            }
-        }
-
-        stage('Docker Login') {
-            steps {
-                withCredentials([
-                    usernamePassword(
-                        credentialsId: "${DOCKER_CREDS}",
-                        usernameVariable: 'DOCKER_USER',
-                        passwordVariable: 'DOCKER_PASS'
-                    )
-                ]) {
-                    sh '''
-                      echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
-                    '''
-                }
             }
         }
 
         stage('Docker Push') {
             steps {
-                sh '''
-                  docker tag ${DOCKER_IMAGE}:${BUILD_NUMBER} ${DOCKER_IMAGE}:latest
-                  docker push ${DOCKER_IMAGE}:${BUILD_NUMBER}
-                  docker push ${DOCKER_IMAGE}:latest
-                '''
+                withCredentials([usernamePassword(
+                    credentialsId: 'docker-hub-creds',
+                    usernameVariable: 'DOCKER_USER',
+                    passwordVariable: 'DOCKER_PASS'
+                )]) {
+                    sh '''
+                      echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin
+                      docker push $DOCKER_IMAGE:latest
+                    '''
+                }
             }
         }
 
@@ -102,7 +87,6 @@ pipeline {
                 withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
                     sh '''
                       kubectl apply -f k8s/
-                      kubectl rollout status deployment myapp
                     '''
                 }
             }
@@ -111,10 +95,10 @@ pipeline {
 
     post {
         success {
-            echo '✅ CI/CD Pipeline completed successfully'
+            echo '✅ CI/CD Pipeline Completed Successfully'
         }
         failure {
-            echo '❌ CI/CD Pipeline failed'
+            echo '❌ CI/CD Pipeline Failed'
         }
     }
 }
