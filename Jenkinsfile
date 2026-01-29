@@ -2,7 +2,7 @@
     agent any
 
     environment {
-        DOCKER_IMAGE = "anjuli6162/myapp"
+        DOCKER_IMAGE = "anju6162/myapp"
     }
 
     stages {
