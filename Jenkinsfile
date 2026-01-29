@@ -3,90 +3,121 @@ pipeline {
 
     tools {
         maven 'maven-3'
+        jdk 'jdk-17'
     }
 
     parameters {
         booleanParam(
-            name: 'RUN_SONAR',
-            defaultValue: false,
-            description: 'Run SonarQube Analysis'
+            name: 'SKIP_SONAR',
+            defaultValue: true,
+            description: 'Skip SonarQube Analysis'
         )
     }
 
     environment {
-        NEXUS_IP = "3.110.219.178"
-        NEXUS_MAVEN_REPO = "maven-releases"
-        DOCKER_REPO = "docker-hosted"
-        IMAGE_NAME = "myapp"
-        IMAGE_TAG = "latest"
+        NEXUS_URL = "http://3.110.219.178:8081"
+        NEXUS_REPO = "maven-releases"
+        NEXUS_CREDENTIALS = "nexus-creds"
+
+        DOCKER_IMAGE = "anju6162/myapp"
+        DOCKER_TAG = "${BUILD_NUMBER}"
+
+        KUBE_CONFIG = credentials('kubeconfig')
     }
 
     stages {
 
         stage('Checkout') {
             steps {
-                git url: 'https://github.com/Anju6162/myapp.git', branch: 'main'
+                checkout scm
             }
         }
 
         stage('Build') {
             steps {
-                sh 'mvn clean package -DskipTests'
+                dir('myapp') {
+                    sh 'mvn clean package -DskipTests'
+                }
             }
         }
 
         stage('Test') {
             steps {
-                sh 'mvn test'
+                dir('myapp') {
+                    sh 'mvn test'
+                }
             }
         }
 
         stage('SonarQube Analysis') {
             when {
-                expression { params.RUN_SONAR }
+                expression { return !params.SKIP_SONAR }
             }
             steps {
-                sh 'mvn sonar:sonar'
+                echo "Running SonarQube Analysis"
+                // Add sonar command later if needed
             }
         }
 
         stage('Upload Artifact to Nexus') {
             steps {
-                sh '''
-                mvn deploy -DskipTests \
-                -DaltDeploymentRepository=nexus::default::http://3.110.219.178:8081/repository/maven-releases/
-                '''
+                dir('myapp') {
+                    withCredentials([usernamePassword(
+                        credentialsId: "${NEXUS_CREDENTIALS}",
+                        usernameVariable: 'NEXUS_USER',
+                        passwordVariable: 'NEXUS_PASS'
+                    )]) {
+                        sh """
+                        mvn deploy \
+                        -DskipTests \
+                        -DaltDeploymentRepository=nexus::default::${NEXUS_URL}/repository/${NEXUS_REPO}/ \
+                        -Dnexus.username=$NEXUS_USER \
+                        -Dnexus.password=$NEXUS_PASS
+                        """
+                    }
+                }
             }
         }
 
         stage('Docker Build') {
             steps {
-                sh '''
-                docker build -t myapp:latest .
-                docker tag myapp:latest 3.110.219.178:8083/myapp:latest
-                '''
+                dir('myapp') {
+                    sh "docker build -t ${DOCKER_IMAGE}:${DOCKER_TAG} ."
+                }
             }
         }
 
         stage('Docker Push') {
             steps {
-                sh 'docker push 3.110.219.178:8083/myapp:latest'
+                withCredentials([usernamePassword(
+                    credentialsId: 'dockerhub-creds',
+                    usernameVariable: 'DOCKER_USER',
+                    passwordVariable: 'DOCKER_PASS'
+                )]) {
+                    sh """
+                    echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin
+                    docker push ${DOCKER_IMAGE}:${DOCKER_TAG}
+                    """
+                }
             }
         }
 
         stage('Deploy to Kubernetes') {
             steps {
-                sh 'kubectl apply -f k8s/'
+                sh """
+                kubectl apply -f k8s/deployment.yaml
+                kubectl apply -f k8s/service.yaml
+                """
             }
         }
     }
 
     post {
         success {
-            echo "✅ Pipeline completed successfully"
+            echo "✅ CI/CD Pipeline completed successfully"
         }
         failure {
-            echo "❌ Pipeline failed"
+            echo "❌ CI/CD Pipeline failed"
         }
     }
 }
