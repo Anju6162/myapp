@@ -1,17 +1,19 @@
 pipeline {
     agent any
 
+    tools {
+        maven 'maven-3'
+    }
+
     parameters {
         booleanParam(
             name: 'RUN_SONAR',
             defaultValue: false,
-            description: 'Run SonarQube Analysis (Optional)'
+            description: 'Run SonarQube Analysis'
         )
     }
 
     environment {
-        NEXUS_URL = "http://<NEXUS_IP>:8081"
-        NEXUS_REPO = "maven-releases"
         DOCKER_REGISTRY = "<NEXUS_IP>:8083"
         APP_NAME = "myapp"
     }
@@ -41,14 +43,12 @@ pipeline {
                 expression { params.RUN_SONAR }
             }
             steps {
-                echo "Running SonarQube Analysis"
                 sh 'mvn sonar:sonar'
             }
         }
 
         stage('Upload Artifact to Nexus') {
             steps {
-                echo "Uploading artifact to Nexus"
                 sh 'mvn deploy -DskipTests'
             }
         }
@@ -64,16 +64,7 @@ pipeline {
 
         stage('Docker Push') {
             steps {
-                withCredentials([usernamePassword(
-                    credentialsId: 'dockerhub-creds',
-                    usernameVariable: 'DOCKER_USER',
-                    passwordVariable: 'DOCKER_PASS'
-                )]) {
-                    sh """
-                    echo \$DOCKER_PASS | docker login ${DOCKER_REGISTRY} -u \$DOCKER_USER --password-stdin
-                    docker push ${DOCKER_REGISTRY}/${APP_NAME}:latest
-                    """
-                }
+                sh 'docker push ${DOCKER_REGISTRY}/${APP_NAME}:latest'
             }
         }
 
@@ -81,15 +72,6 @@ pipeline {
             steps {
                 sh 'kubectl apply -f k8s/'
             }
-        }
-    }
-
-    post {
-        success {
-            echo "✅ CI/CD Pipeline Completed Successfully"
-        }
-        failure {
-            echo "❌ Pipeline Failed"
         }
     }
 }
