@@ -1,20 +1,22 @@
- pipeline {
+pipeline {
     agent any
 
     environment {
-        DOCKER_IMAGE = "anju6162/myapp"
+        NEXUS_REGISTRY = "3.110.219.178:8083"
+        IMAGE_NAME     = "myapp"
+        IMAGE_TAG      = "latest"
+        FULL_IMAGE     = "${NEXUS_REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG}"
     }
 
     stages {
 
         stage('Checkout') {
             steps {
-                git branch: 'main',
-                    url: 'https://github.com/Anju6162/myapp.git'
+                checkout scm
             }
         }
 
-        stage('Install Dependencies') {
+        stage('Build') {
             steps {
                 sh '''
                   npm install
@@ -22,32 +24,24 @@
             }
         }
 
-        stage('Test') {
-            steps {
-                sh '''
-                  npm test || echo "No tests defined"
-                '''
-            }
-        }
-
         stage('Docker Build') {
             steps {
                 sh '''
-                  docker build -t $DOCKER_IMAGE:latest .
+                  docker build -t $FULL_IMAGE .
                 '''
             }
         }
 
-        stage('Docker Push') {
+        stage('Upload Image to Nexus') {
             steps {
                 withCredentials([usernamePassword(
-                    credentialsId: 'dockerhub-creds',
-                    usernameVariable: 'DOCKER_USER',
-                    passwordVariable: 'DOCKER_PASS'
+                    credentialsId: 'nexus-creds3',
+                    usernameVariable: 'NEXUS_USER',
+                    passwordVariable: 'NEXUS_PASS'
                 )]) {
                     sh '''
-                      echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin
-                      docker push $DOCKER_IMAGE:latest
+                      echo $NEXUS_PASS | docker login $NEXUS_REGISTRY -u $NEXUS_USER --password-stdin
+                      docker push $FULL_IMAGE
                     '''
                 }
             }
@@ -66,11 +60,10 @@
 
     post {
         success {
-            echo "✅ Node.js CI/CD Pipeline Completed Successfully"
+            echo "✅ CI/CD Pipeline completed successfully"
         }
         failure {
-            echo "❌ Node.js CI/CD Pipeline Failed"
+            echo "❌ CI/CD Pipeline failed"
         }
     }
 }
-
